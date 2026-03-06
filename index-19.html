@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Family Travel Map</title>
+<meta name="theme-color" content="#0a1628">
+<link rel="manifest" href="/manifest.json">
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a1628;--sf:#0f1e35;--sf2:#162640;--bd:rgba(255,255,255,0.07);--tx:#e8f0fe;--mu:#4a6080}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--tx);height:100vh;display:flex;flex-direction:column;overflow:hidden}
+/* HEADER */
+header{background:var(--sf);border-bottom:1px solid var(--bd);padding:9px 14px;display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap}
+.logo{font-size:1rem;font-weight:700;white-space:nowrap}
+.filters{display:flex;gap:5px;margin-left:auto;flex-wrap:wrap;align-items:center}
+.fbtn{padding:5px 12px;border-radius:20px;border:none;font-size:0.75rem;font-weight:600;cursor:pointer;opacity:0.4;transition:all .2s;font-family:inherit}
+.fbtn.active{opacity:1;transform:scale(1.05)}
+.sbtn{padding:5px 10px;border-radius:20px;border:none;font-size:0.75rem;font-weight:600;cursor:pointer;font-family:inherit;opacity:1}
+/* LOCK BANNER */
+.lbanner{background:rgba(59,130,246,.08);border-bottom:1px solid rgba(59,130,246,.15);padding:5px 14px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;font-size:.72rem;color:#60a5fa}
+.lbanner.hidden{display:none}
+.lbtn{padding:3px 9px;border-radius:7px;border:1px solid rgba(59,130,246,.3);background:rgba(59,130,246,.1);color:#60a5fa;font-size:.68rem;font-weight:600;cursor:pointer;font-family:inherit}
+.lbtn:hover{background:rgba(59,130,246,.2)}
+/* STATS BAR */
+.sbar{background:var(--sf);border-bottom:1px solid var(--bd);padding:6px 14px;display:flex;gap:16px;flex-shrink:0;overflow-x:auto}
+.si{text-align:center;white-space:nowrap}
+.sv{font-size:1.05rem;font-weight:700;line-height:1}
+.sl{font-size:0.58rem;color:var(--mu);margin-top:1px}
+/* MAP */
+#mc{flex:1;position:relative;overflow:hidden}
+#ms{width:100%;height:100%;cursor:grab}
+#ms:active{cursor:grabbing}
+.cp{stroke:rgba(255,255,255,0.1);stroke-width:0.3;transition:fill .3s;cursor:pointer}
+.cp:hover{stroke:rgba(255,255,255,0.4);stroke-width:0.8}
+/* ZOOM */
+.zc{position:absolute;bottom:16px;right:14px;display:flex;flex-direction:column;gap:5px}
+.zb{width:38px;height:38px;border-radius:10px;border:1px solid var(--bd);background:var(--sf);color:var(--tx);font-size:1.1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(0,0,0,.3)}
+.zb:hover{background:var(--sf2)}
+/* LEGEND */
+.leg{position:absolute;bottom:16px;left:12px;background:rgba(10,22,40,.93);border:1px solid var(--bd);border-radius:12px;padding:10px 12px;font-size:0.68rem;backdrop-filter:blur(8px)}
+.ltit{font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:.08em;font-size:.58rem;margin-bottom:6px}
+.li{display:flex;align-items:center;gap:5px;margin-bottom:3px;color:#94a3b8}
+.ld{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+/* TOOLTIP */
+#tip{position:absolute;background:rgba(10,22,40,.97);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:8px 10px;pointer-events:none;font-size:0.73rem;max-width:220px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.4);display:none}
+.th{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.tf{width:20px;height:14px;object-fit:cover;border-radius:2px}
+.tn{font-weight:700;color:var(--tx);font-size:.8rem}
+.tv{display:flex;align-items:center;gap:3px;color:#94a3b8;margin-top:2px;font-size:.68rem;flex-wrap:wrap}
+.tmd{width:12px;height:12px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.4rem;font-weight:700;color:#fff;flex-shrink:0}
+/* OVERLAY */
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:200;display:flex;align-items:center;justify-content:center;padding:14px;backdrop-filter:blur(4px)}
+.ov.hidden{display:none}
+/* MODAL */
+.mod{background:var(--sf);border-radius:18px;width:100%;max-width:430px;max-height:90vh;overflow-y:auto;border:1px solid var(--bd);box-shadow:0 40px 80px rgba(0,0,0,.6)}
+.mh{padding:16px 16px 12px;border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:11px;position:sticky;top:0;background:var(--sf);z-index:1}
+.mflag{width:44px;height:30px;object-fit:cover;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.3);flex-shrink:0}
+.mcn{font-size:1.2rem;font-weight:700}
+.mcm{font-size:.66rem;color:var(--mu);margin-top:1px}
+.xbtn{margin-left:auto;width:28px;height:28px;border-radius:7px;border:1px solid var(--bd);background:transparent;color:var(--mu);font-size:.95rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.xbtn:hover{background:var(--sf2);color:var(--tx)}
+.mb{padding:13px 16px 16px}
+.slb{font-size:.6rem;font-weight:700;color:#3b82f6;text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px}
+/* VISITS */
+.vl{display:flex;flex-direction:column;gap:6px;margin-bottom:11px}
+.vc{background:rgba(255,255,255,.04);border:1px solid var(--bd);border-radius:10px;padding:9px 11px;display:flex;align-items:center;gap:8px}
+.vms{display:flex;gap:3px;flex-shrink:0}
+.vmd{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;color:#fff;flex-shrink:0}
+.vi{flex:1;min-width:0}
+.vtt{font-size:.78rem;font-weight:600}
+.vyt{font-size:.66rem;color:var(--mu);margin-top:1px}
+.vbg{font-size:.58rem;font-weight:600;padding:2px 6px;border-radius:20px;white-space:nowrap;flex-shrink:0}
+.bh{background:rgba(34,197,94,.15);color:#4ade80;border:1px solid rgba(34,197,94,.2)}
+.bw{background:rgba(245,158,11,.15);color:#fbbf24;border:1px solid rgba(245,158,11,.2)}
+.bt{background:rgba(168,85,247,.15);color:#c084fc;border:1px solid rgba(168,85,247,.2)}
+.bo{background:rgba(148,163,184,.15);color:#94a3b8;border:1px solid rgba(148,163,184,.2)}
+.delbtn{width:22px;height:22px;border-radius:5px;border:1px solid rgba(239,68,68,.2);background:rgba(239,68,68,.08);color:#f87171;font-size:.7rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.delbtn:hover{background:rgba(239,68,68,.2)}
+.avbtn{width:100%;padding:8px;border-radius:10px;border:1px dashed rgba(59,130,246,.3);background:rgba(59,130,246,.05);color:#60a5fa;font-size:.78rem;font-weight:600;cursor:pointer;font-family:inherit;transition:all .2s;margin-bottom:13px}
+.avbtn:hover{background:rgba(59,130,246,.1)}
+/* FORM */
+.af{background:rgba(255,255,255,.03);border:1px solid var(--bd);border-radius:12px;padding:12px;margin-bottom:13px}
+.fl{font-size:.66rem;color:var(--mu);font-weight:600;margin-bottom:5px}
+.mcs{display:flex;gap:7px;margin-bottom:10px}
+.mcb input{display:none}
+.mcd{width:27px;height:27px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.62rem;font-weight:700;color:#fff;opacity:.35;transition:opacity .2s,transform .2s;cursor:pointer}
+.mcb input:checked+.mcd{opacity:1;transform:scale(1.1)}
+.fr{display:flex;gap:6px;margin-bottom:8px}
+.fsel,.finp{flex:1;padding:7px 8px;background:var(--sf2);border:1px solid var(--bd);border-radius:8px;color:var(--tx);font-size:.78rem;font-family:inherit;outline:none}
+.fsel:focus,.finp:focus{border-color:rgba(59,130,246,.5)}
+.fbr{display:flex;gap:6px}
+.bsave{flex:1;padding:8px;border-radius:8px;border:none;background:#3b82f6;color:#fff;font-size:.78rem;font-weight:600;cursor:pointer;font-family:inherit}
+.bsave:hover{background:#2563eb}
+.bcanc{padding:8px 12px;border-radius:8px;border:1px solid var(--bd);background:transparent;color:var(--mu);font-size:.78rem;cursor:pointer;font-family:inherit}
+/* STATS PAGE */
+.spage{position:fixed;inset:0;background:var(--bg);z-index:300;display:flex;flex-direction:column}
+.spage.hidden{display:none}
+.sphdr{background:var(--sf);border-bottom:1px solid var(--bd);padding:10px 14px;display:flex;align-items:center;gap:10px;flex-shrink:0}
+.spback{width:30px;height:30px;border-radius:8px;border:1px solid var(--bd);background:transparent;color:var(--tx);font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.spback:hover{background:var(--sf2)}
+.spttl{font-size:.92rem;font-weight:700}
+.spbody{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:11px}
+.mcard{background:var(--sf);border-radius:13px;padding:13px;border:1px solid var(--bd)}
+.mchdr{display:flex;align-items:center;gap:8px;margin-bottom:11px;padding-bottom:9px;border-bottom:1px solid var(--bd)}
+.mcdot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.mcnam{font-size:.88rem;font-weight:700}
+.mctot{font-size:.66rem;color:var(--mu);margin-left:auto;font-family:monospace}
+.crow{margin-bottom:7px}
+.ctop{display:flex;justify-content:space-between;margin-bottom:3px}
+.cnam{font-size:.7rem;color:#94a3b8}
+.cpct{font-size:.66rem;color:var(--mu);font-family:monospace}
+.cbar{height:5px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden}
+.cfill{height:100%;border-radius:3px}
+.wcard{background:var(--sf);border-radius:13px;padding:13px;border:1px solid var(--bd)}
+.wttl{font-size:.62rem;font-weight:700;color:#3b82f6;text-transform:uppercase;letter-spacing:.1em;margin-bottom:11px}
+.wgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+.witem{text-align:center;background:rgba(255,255,255,.03);border-radius:8px;padding:8px}
+.wval{font-size:1.1rem;font-weight:700;line-height:1}
+.wlbl{font-size:.58rem;color:var(--mu);margin-top:2px}
+/* PWD MODAL */
+.pov{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:500;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.pov.hidden{display:none}
+.pbox{background:var(--sf);border-radius:16px;padding:22px;width:270px;border:1px solid var(--bd);box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.pttl{font-size:.95rem;font-weight:700;margin-bottom:5px}
+.psub{font-size:.72rem;color:var(--mu);margin-bottom:14px}
+.pinp{width:100%;padding:8px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:8px;color:var(--tx);font-size:.88rem;font-family:inherit;outline:none;margin-bottom:8px}
+.pinp:focus{border-color:rgba(59,130,246,.5)}
+.perr{font-size:.7rem;color:#f87171;margin-bottom:7px;display:none}
+.prow{display:flex;gap:7px}
+.pok{flex:1;padding:8px;border-radius:8px;border:none;background:#3b82f6;color:#fff;font-size:.8rem;font-weight:600;cursor:pointer;font-family:inherit}
+.pok:hover{background:#2563eb}
+.pcan{padding:8px 11px;border-radius:8px;border:1px solid var(--bd);background:transparent;color:var(--mu);font-size:.8rem;cursor:pointer;font-family:inherit}
+@media(max-width:600px){.logo span{display:none}.fbtn{padding:4px 8px;font-size:.68rem}.leg{display:none}.zc{bottom:10px;right:10px}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">✈️ <span>Family Travel Map</span></div>
+  <div class="filters">
+    <button class="fbtn active" data-f="all" onclick="setFilter('all')" style="background:#334155;color:#e2e8f0">🌍 Všetci</button>
+    <button class="fbtn" data-f="zoli" onclick="toggleMember('zoli')" style="background:#0ea5e9;color:#fff">Z</button>
+    <button class="fbtn" data-f="veve" onclick="toggleMember('veve')" style="background:#ec4899;color:#fff">V</button>
+    <button class="fbtn" data-f="teo" onclick="toggleMember('teo')" style="background:#1e40af;color:#fff">T</button>
+    <button class="sbtn" onclick="showStats()" style="background:#0f4c81;color:#fff">📊</button>
+    <button class="sbtn" id="lockBtn" onclick="showPwd()" style="background:#1e293b;color:#60a5fa;border:1px solid rgba(59,130,246,.3)">🔒</button>
+  </div>
+</header>
+
+<div class="lbanner" id="lockedBanner">🔒 Náhľad – úpravy sú zamknuté <button class="lbtn" onclick="showPwd()">🔑 Odomknúť</button></div>
+<div class="lbanner hidden" id="unlockedBanner">🔓 Odomknuté <button class="lbtn" onclick="lockApp()">Zamknúť</button></div>
+
+<div class="sbar">
+  <div class="si"><div class="sv" id="st">0</div><div class="sl">Zobrazené</div></div>
+  <div class="si"><div class="sv" id="sw" style="color:#94a3b8">0%</div><div class="sl">sveta</div></div>
+  <div class="si"><div class="sv" id="sz" style="color:#7dd3fc">0</div><div class="sl">Zoli · <span id="szp">0%</span></div></div>
+  <div class="si"><div class="sv" id="sv2" style="color:#ec4899">0</div><div class="sl">Veve · <span id="svp">0%</span></div></div>
+  <div class="si"><div class="sv" id="steo" style="color:#60a5fa">0</div><div class="sl">Teo · <span id="step">0%</span></div></div>
+  <div class="si"><div class="sv" id="sa" style="color:#fbbf24">⭐ 0</div><div class="sl">Všetci · <span id="sap">0%</span></div></div>
+</div>
+
+<div id="mc">
+  <svg id="ms"></svg>
+  <div class="zc">
+    <button class="zb" onclick="zoomIn()">+</button>
+    <button class="zb" onclick="zoomOut()">−</button>
+    <button class="zb" onclick="zoomReset()">⌂</button>
+  </div>
+  <div class="leg">
+    <div class="ltit">Legenda</div>
+    <div class="li"><div class="ld" style="background:#7dd3fc"></div>Zoli</div>
+    <div class="li"><div class="ld" style="background:#ec4899"></div>Veve</div>
+    <div class="li"><div class="ld" style="background:#1e40af"></div>Teo</div>
+    <div class="li"><div class="ld" style="background:#a855f7"></div>Zoli + Veve</div>
+    <div class="li"><div class="ld" style="background:#f97316"></div>Zoli + Teo</div>
+    <div class="li"><div class="ld" style="background:#ef4444"></div>Veve + Teo</div>
+    <div class="li"><div class="ld" style="background:#f8fafc;border:1px solid #334155"></div>Všetci ⭐</div>
+  </div>
+  <div id="tip"></div>
+</div>
+
+<!-- COUNTRY MODAL -->
+<div class="ov hidden" id="ov" onclick="closeOv(event)">
+  <div class="mod">
+    <div class="mh">
+      <img class="mflag" id="mfl" src="" alt="">
+      <div><div class="mcn" id="mcn"></div><div class="mcm" id="mcm"></div></div>
+      <button class="xbtn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="mb">
+      <div class="slb">Návštevy</div>
+      <div class="vl" id="vl"></div>
+      <button class="avbtn" id="avbtn" onclick="showForm()" style="display:none">+ Pridať návštevu</button>
+      <div class="af" id="af" style="display:none">
+        <div class="fl">Kto bol?</div>
+        <div class="mcs">
+          <label class="mcb"><input type="checkbox" id="cbz"><div class="mcd" style="background:#0ea5e9">Z</div></label>
+          <label class="mcb"><input type="checkbox" id="cbv"><div class="mcd" style="background:#ec4899">V</div></label>
+          <label class="mcb"><input type="checkbox" id="cbt"><div class="mcd" style="background:#1e40af">T</div></label>
+        </div>
+        <div class="fl">Typ návštevy</div>
+        <div class="fr">
+          <select class="fsel" id="vtype">
+            <option value="dovolenka">🏖️ Dovolenka</option>
+            <option value="sluzobka">💼 Služobka</option>
+            <option value="prestup">✈️ Prestup</option>
+            <option value="ine">📍 Iné</option>
+          </select>
+        </div>
+        <div class="fl">Počet návštev</div>
+        <div class="fr">
+          <select class="fsel" id="vcnt" onchange="onCntChange()">
+            <option value="1">1×</option>
+            <option value="2">2×</option>
+            <option value="3">3×</option>
+            <option value="4">4×</option>
+            <option value="5">5×</option>
+            <option value="viac">Viackrát 🔁</option>
+          </select>
+        </div>
+        <div class="fl" id="ylbl">Rok (voliteľné)</div>
+        <div class="fr">
+          <input type="number" class="finp" id="vy" placeholder="napr. 2024" min="1900" max="2099">
+          <input type="number" class="finp" id="vly" placeholder="Posledný rok" min="1900" max="2099" style="display:none">
+        </div>
+        <div class="fbr">
+          <button class="bsave" onclick="saveVisit()">Uložiť</button>
+          <button class="bcanc" onclick="hideForm()">Zrušiť</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- STATS PAGE -->
+<div class="spage hidden" id="spage">
+  <div class="sphdr">
+    <button class="spback" onclick="hideStats()">←</button>
+    <div class="spttl">📊 Štatistiky cestovania</div>
+  </div>
+  <div class="spbody" id="spbody"></div>
+</div>
+
+<!-- PASSWORD MODAL -->
+<div class="pov hidden" id="pov">
+  <div class="pbox">
+    <div class="pttl">🔑 Odomknúť úpravy</div>
+    <div class="psub">Zadaj heslo pre pridávanie a mazanie návštev</div>
+    <input type="password" class="pinp" id="pinp" placeholder="Heslo..." onkeydown="if(event.key==='Enter')checkPwd()">
+    <div class="perr" id="perr">Nesprávne heslo!</div>
+    <div class="prow">
+      <button class="pok" onclick="checkPwd()">Odomknúť</button>
+      <button class="pcan" onclick="hidePwd()">Zrušiť</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// Firebase
+const FC={apiKey:"AIzaSyB47DRcRDPb2llikRCBR1uSwY6-INm7lv0",authDomain:"family-travel-map-a3d6c.firebaseapp.com",projectId:"family-travel-map-a3d6c",storageBucket:"family-travel-map-a3d6c.firebasestorage.app",messagingSenderId:"1079439390283",appId:"1:1079439390283:web:56ffe8be168aa7b7ff3fce"};
+firebase.initializeApp(FC);
+const db=firebase.firestore();
+
+// Country data
+const CD={"004":{name:"Afganistan",a2:"af",c:"Ázia"},"008":{name:"Albánsko",a2:"al",c:"Európa"},"012":{name:"Alžírsko",a2:"dz",c:"Afrika"},"020":{name:"Andorra",a2:"ad",c:"Európa"},"024":{name:"Angola",a2:"ao",c:"Afrika"},"031":{name:"Azerbajdžan",a2:"az",c:"Ázia"},"032":{name:"Argentína",a2:"ar",c:"Amerika"},"036":{name:"Austrália",a2:"au",c:"Oceánia"},"040":{name:"Rakúsko",a2:"at",c:"Európa"},"050":{name:"Bangladéš",a2:"bd",c:"Ázia"},"051":{name:"Arménsko",a2:"am",c:"Ázia"},"056":{name:"Belgicko",a2:"be",c:"Európa"},"064":{name:"Bhután",a2:"bt",c:"Ázia"},"068":{name:"Bolívia",a2:"bo",c:"Amerika"},"070":{name:"Bosna a Hercegovina",a2:"ba",c:"Európa"},"072":{name:"Botswana",a2:"bw",c:"Afrika"},"076":{name:"Brazília",a2:"br",c:"Amerika"},"096":{name:"Brunej",a2:"bn",c:"Ázia"},"100":{name:"Bulharsko",a2:"bg",c:"Európa"},"104":{name:"Mjanmarsko",a2:"mm",c:"Ázia"},"108":{name:"Burundi",a2:"bi",c:"Afrika"},"112":{name:"Bielorusko",a2:"by",c:"Európa"},"116":{name:"Kambodža",a2:"kh",c:"Ázia"},"120":{name:"Kamerun",a2:"cm",c:"Afrika"},"124":{name:"Kanada",a2:"ca",c:"Amerika"},"140":{name:"Stredoafrická republika",a2:"cf",c:"Afrika"},"144":{name:"Srí Lanka",a2:"lk",c:"Ázia"},"152":{name:"Čile",a2:"cl",c:"Amerika"},"156":{name:"Čína",a2:"cn",c:"Ázia"},"170":{name:"Kolumbia",a2:"co",c:"Amerika"},"178":{name:"Kongo",a2:"cg",c:"Afrika"},"180":{name:"DR Kongo",a2:"cd",c:"Afrika"},"188":{name:"Kostarika",a2:"cr",c:"Amerika"},"191":{name:"Chorvátsko",a2:"hr",c:"Európa"},"192":{name:"Kuba",a2:"cu",c:"Amerika"},"196":{name:"Cyprus",a2:"cy",c:"Európa"},"203":{name:"Česko",a2:"cz",c:"Európa"},"208":{name:"Dánsko",a2:"dk",c:"Európa"},"214":{name:"Dominikánska republika",a2:"do",c:"Amerika"},"218":{name:"Ekvádor",a2:"ec",c:"Amerika"},"222":{name:"Salvádor",a2:"sv",c:"Amerika"},"231":{name:"Etiópia",a2:"et",c:"Afrika"},"233":{name:"Estónsko",a2:"ee",c:"Európa"},"242":{name:"Fidži",a2:"fj",c:"Oceánia"},"246":{name:"Fínsko",a2:"fi",c:"Európa"},"250":{name:"Francúzsko",a2:"fr",c:"Európa"},"266":{name:"Gabon",a2:"ga",c:"Afrika"},"268":{name:"Gruzínsko",a2:"ge",c:"Ázia"},"276":{name:"Nemecko",a2:"de",c:"Európa"},"288":{name:"Ghana",a2:"gh",c:"Afrika"},"300":{name:"Grécko",a2:"gr",c:"Európa"},"304":{name:"Grónsko",a2:"gl",c:"Amerika"},"320":{name:"Guatemala",a2:"gt",c:"Amerika"},"324":{name:"Guinea",a2:"gn",c:"Afrika"},"328":{name:"Guyana",a2:"gy",c:"Amerika"},"332":{name:"Haiti",a2:"ht",c:"Amerika"},"340":{name:"Honduras",a2:"hn",c:"Amerika"},"348":{name:"Maďarsko",a2:"hu",c:"Európa"},"352":{name:"Island",a2:"is",c:"Európa"},"356":{name:"India",a2:"in",c:"Ázia"},"360":{name:"Indonézia",a2:"id",c:"Ázia"},"364":{name:"Irán",a2:"ir",c:"Ázia"},"368":{name:"Irak",a2:"iq",c:"Ázia"},"372":{name:"Írsko",a2:"ie",c:"Európa"},"376":{name:"Izrael",a2:"il",c:"Ázia"},"380":{name:"Taliansko",a2:"it",c:"Európa"},"384":{name:"Pobrežie Slonoviny",a2:"ci",c:"Afrika"},"388":{name:"Jamajka",a2:"jm",c:"Amerika"},"392":{name:"Japonsko",a2:"jp",c:"Ázia"},"398":{name:"Kazachstan",a2:"kz",c:"Ázia"},"400":{name:"Jordánsko",a2:"jo",c:"Ázia"},"404":{name:"Keňa",a2:"ke",c:"Afrika"},"408":{name:"Severná Kórea",a2:"kp",c:"Ázia"},"410":{name:"Južná Kórea",a2:"kr",c:"Ázia"},"414":{name:"Kuvajt",a2:"kw",c:"Ázia"},"418":{name:"Laos",a2:"la",c:"Ázia"},"422":{name:"Libanon",a2:"lb",c:"Ázia"},"426":{name:"Lesotho",a2:"ls",c:"Afrika"},"428":{name:"Lotyšsko",a2:"lv",c:"Európa"},"430":{name:"Libéria",a2:"lr",c:"Afrika"},"434":{name:"Líbya",a2:"ly",c:"Afrika"},"440":{name:"Litva",a2:"lt",c:"Európa"},"442":{name:"Luxembursko",a2:"lu",c:"Európa"},"450":{name:"Madagaskar",a2:"mg",c:"Afrika"},"454":{name:"Malawi",a2:"mw",c:"Afrika"},"458":{name:"Malajzia",a2:"my",c:"Ázia"},"466":{name:"Mali",a2:"ml",c:"Afrika"},"470":{name:"Malta",a2:"mt",c:"Európa"},"484":{name:"Mexiko",a2:"mx",c:"Amerika"},"496":{name:"Mongolsko",a2:"mn",c:"Ázia"},"498":{name:"Moldavsko",a2:"md",c:"Európa"},"499":{name:"Čierna Hora",a2:"me",c:"Európa"},"504":{name:"Maroko",a2:"ma",c:"Afrika"},"508":{name:"Mozambik",a2:"mz",c:"Afrika"},"516":{name:"Namíbia",a2:"na",c:"Afrika"},"524":{name:"Nepál",a2:"np",c:"Ázia"},"528":{name:"Holandsko",a2:"nl",c:"Európa"},"540":{name:"Nová Kaledónia",a2:"nc",c:"Oceánia"},"554":{name:"Nový Zéland",a2:"nz",c:"Oceánia"},"558":{name:"Nikaragua",a2:"ni",c:"Amerika"},"562":{name:"Niger",a2:"ne",c:"Afrika"},"566":{name:"Nigéria",a2:"ng",c:"Afrika"},"578":{name:"Nórsko",a2:"no",c:"Európa"},"586":{name:"Pakistan",a2:"pk",c:"Ázia"},"591":{name:"Panama",a2:"pa",c:"Amerika"},"598":{name:"Papua Nová Guinea",a2:"pg",c:"Oceánia"},"600":{name:"Paraguaj",a2:"py",c:"Amerika"},"604":{name:"Peru",a2:"pe",c:"Amerika"},"608":{name:"Filipíny",a2:"ph",c:"Ázia"},"616":{name:"Poľsko",a2:"pl",c:"Európa"},"620":{name:"Portugalsko",a2:"pt",c:"Európa"},"634":{name:"Katar",a2:"qa",c:"Ázia"},"642":{name:"Rumunsko",a2:"ro",c:"Európa"},"643":{name:"Rusko",a2:"ru",c:"Európa"},"646":{name:"Rwanda",a2:"rw",c:"Afrika"},"682":{name:"Saudská Arábia",a2:"sa",c:"Ázia"},"686":{name:"Senegal",a2:"sn",c:"Afrika"},"688":{name:"Srbsko",a2:"rs",c:"Európa"},"694":{name:"Sierra Leone",a2:"sl",c:"Afrika"},"703":{name:"Slovensko",a2:"sk",c:"Európa"},"704":{name:"Vietnam",a2:"vn",c:"Ázia"},"705":{name:"Slovinsko",a2:"si",c:"Európa"},"706":{name:"Somálsko",a2:"so",c:"Afrika"},"710":{name:"Južná Afrika",a2:"za",c:"Afrika"},"716":{name:"Zimbabwe",a2:"zw",c:"Afrika"},"724":{name:"Španielsko",a2:"es",c:"Európa"},"729":{name:"Sudán",a2:"sd",c:"Afrika"},"740":{name:"Surinam",a2:"sr",c:"Amerika"},"752":{name:"Švédsko",a2:"se",c:"Európa"},"756":{name:"Švajčiarsko",a2:"ch",c:"Európa"},"760":{name:"Sýria",a2:"sy",c:"Ázia"},"762":{name:"Tadžikistan",a2:"tj",c:"Ázia"},"764":{name:"Thajsko",a2:"th",c:"Ázia"},"768":{name:"Togo",a2:"tg",c:"Afrika"},"784":{name:"SAE",a2:"ae",c:"Ázia"},"788":{name:"Tunisko",a2:"tn",c:"Afrika"},"792":{name:"Turecko",a2:"tr",c:"Ázia"},"800":{name:"Uganda",a2:"ug",c:"Afrika"},"804":{name:"Ukrajina",a2:"ua",c:"Európa"},"807":{name:"Severné Macedónsko",a2:"mk",c:"Európa"},"818":{name:"Egypt",a2:"eg",c:"Afrika"},"826":{name:"Spojené kráľovstvo",a2:"gb",c:"Európa"},"840":{name:"USA",a2:"us",c:"Amerika"},"858":{name:"Uruguaj",a2:"uy",c:"Amerika"},"860":{name:"Uzbekistan",a2:"uz",c:"Ázia"},"862":{name:"Venezuela",a2:"ve",c:"Amerika"},"887":{name:"Jemen",a2:"ye",c:"Ázia"},"894":{name:"Zambia",a2:"zm",c:"Afrika"},"626":{name:"Timor-Leste",a2:"tl",c:"Ázia"}};
+const CCOUNTS={"Európa":44,"Ázia":48,"Afrika":54,"Amerika":35,"Oceánia":14};
+const COL={z:'#7dd3fc',v:'#ec4899',t:'#1e40af',zv:'#a855f7',zt:'#f97316',vt:'#ef4444',all:'#f8fafc',none:'#1a2d4a'};
+const MC={zoli:'#0ea5e9',veve:'#ec4899',teo:'#1e40af'};
+const ML={zoli:'Z',veve:'V',teo:'T'};
+const TL={dovolenka:'🏖️ Dovolenka',sluzobka:'💼 Služobka',prestup:'✈️ Prestup',ine:'📍 Iné'};
+const BC={dovolenka:'bh',sluzobka:'bw',prestup:'bt',ine:'bo'};
+const BL={dovolenka:'Dovolenka',sluzobka:'Služobka',prestup:'Prestup',ine:'Iné'};
+const CONTS=['Európa','Ázia','Afrika','Amerika','Oceánia'];
+const ICONS={'Európa':'🌍','Ázia':'🌏','Afrika':'🌍','Amerika':'🌎','Oceánia':'🌊'};
+
+let data={}, filter='all', activeMembers=new Set(), curCode=null, svgZ, isUnlocked=false;
+
+// --- HELPERS ---
+function getMembers(code){
+  const d=data[code];
+  if(!d||!d.visits||!d.visits.length) return [];
+  const s=new Set();
+  d.visits.forEach(v=>(v.members||[]).forEach(m=>s.add(m)));
+  return [...s];
+}
+
+function getColor(code){
+  const m=getMembers(code);
+  if(!m.length) return COL.none;
+  if(filter!=='all'){
+    const sel=[...activeMembers];
+    if(!sel.every(s=>m.includes(s))) return COL.none;
+    const sz=sel.includes('zoli'),sv=sel.includes('veve'),st=sel.includes('teo');
+    if(sz&&sv&&st) return COL.all;
+    if(sz&&sv) return COL.zv;
+    if(sz&&st) return COL.zt;
+    if(sv&&st) return COL.vt;
+    if(sz) return COL.z;
+    if(sv) return COL.v;
+    if(st) return COL.t;
+    return COL.none;
+  }
+  const z=m.includes('zoli'),v=m.includes('veve'),t=m.includes('teo');
+  if(z&&v&&t) return COL.all;
+  if(z&&v) return COL.zv;
+  if(z&&t) return COL.zt;
+  if(v&&t) return COL.vt;
+  if(z) return COL.z;
+  if(v) return COL.v;
+  if(t) return COL.t;
+  return COL.none;
+}
+
+function flag(a2){ return `https://flagcdn.com/w40/${a2}.png`; }
+
+// --- FIREBASE ---
+async function loadData(){
+  try{
+    const snap=await db.collection('countries').get();
+    data={};
+    snap.forEach(d=>{ data[d.id]=d.data(); });
+    colorMap(); updateStats();
+  }catch(e){ console.error(e); }
+}
+
+async function saveDoc(code){
+  try{
+    if(!data[code]||!data[code].visits||!data[code].visits.length){
+      await db.collection('countries').doc(code).delete();
+      delete data[code];
+    } else {
+      await db.collection('countries').doc(code).set(data[code]);
+    }
+  }catch(e){ console.error(e); }
+  colorMap(); updateStats();
+}
+
+// --- MAP ---
+function initMap(){
+  const svg=d3.select('#ms');
+  const mc=document.getElementById('mc');
+  const w=mc.clientWidth, h=mc.clientHeight;
+  const proj=d3.geoNaturalEarth1().scale(w/6.5).translate([w/2,h/2]);
+  const path=d3.geoPath().projection(proj);
+  const g=svg.append('g');
+  svgZ=d3.zoom().scaleExtent([1,8]).on('zoom',e=>g.attr('transform',e.transform));
+  svg.call(svgZ);
+  const tip=document.getElementById('tip');
+
+  d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(world=>{
+    g.selectAll('.cp')
+      .data(topojson.feature(world,world.objects.countries).features)
+      .enter().append('path')
+      .attr('class','cp')
+      .attr('d',path)
+      .attr('data-id',d=>String(d.id).padStart(3,'0'))
+      .style('fill',d=>getColor(String(d.id).padStart(3,'0')))
+      .on('mousemove',function(e,d){
+        const code=String(d.id).padStart(3,'0');
+        const info=CD[code]; if(!info) return;
+        if(filter!=='all'&&!getColor(code).includes('#1a2d4a'===COL.none)) {}
+        if(getColor(code)===COL.none) return;
+        const cd=data[code];
+        let h=`<div class="th"><img class="tf" src="${flag(info.a2)}" onerror="this.style.display='none'"><span class="tn">${info.name}</span></div>`;
+        if(cd&&cd.visits&&cd.visits.length){
+          cd.visits.forEach(v=>{
+            const isViac=v.count==='viac'||v.multiple;
+            h+=`<div class="tv">`;
+            (v.members||[]).forEach(m=>{ h+=`<div class="tmd" style="background:${MC[m]||'#666'}">${ML[m]||'?'}</div>`; });
+            h+=`<span>${TL[v.type]||v.type}`;
+            if(isViac) h+=` · viackrát 🔁`;
+            else if(v.count&&v.count!=='1') h+=` · ${v.count}×`;
+            if(isViac&&v.lastYear) h+=` · posl.${v.lastYear}`;
+            else if(v.year) h+=` · ${v.year}`;
+            h+=`</span></div>`;
+          });
+        }
+        tip.innerHTML=h; tip.style.display='block';
+        const r=mc.getBoundingClientRect();
+        let x=e.clientX-r.left+12, y=e.clientY-r.top+12;
+        if(x+230>w) x-=240; if(y+150>h) y-=150;
+        tip.style.left=x+'px'; tip.style.top=y+'px';
+      })
+      .on('mouseleave',()=>tip.style.display='none')
+      .on('click',(e,d)=>{
+        const code=String(d.id).padStart(3,'0');
+        if(CD[code]) openModal(code);
+      });
+    colorMap();
+  });
+}
+
+function colorMap(){
+  d3.selectAll('.cp').style('fill',function(){ return getColor(d3.select(this).attr('data-id')); });
+}
+
+function updateStats(){
+  const W=195;
+  let shown=0,z=0,v=0,t=0,a=0;
+  const sel=[...activeMembers];
+  Object.keys(data).forEach(code=>{
+    const m=getMembers(code); if(!m.length) return;
+    const mz=m.includes('zoli'),mv=m.includes('veve'),mt=m.includes('teo');
+    if(mz) z++; if(mv) v++; if(mt) t++;
+    if(mz&&mv&&mt) a++;
+    if(filter==='all'||sel.every(s=>m.includes(s))) shown++;
+  });
+  document.getElementById('st').textContent=shown;
+  document.getElementById('sw').textContent=Math.round(shown/W*100)+'%';
+  document.getElementById('sz').textContent=z; document.getElementById('szp').textContent=Math.round(z/W*100)+'%';
+  document.getElementById('sv2').textContent=v; document.getElementById('svp').textContent=Math.round(v/W*100)+'%';
+  document.getElementById('steo').textContent=t; document.getElementById('step').textContent=Math.round(t/W*100)+'%';
+  document.getElementById('sa').textContent='⭐ '+a; document.getElementById('sap').textContent=Math.round(a/W*100)+'%';
+}
+
+// --- FILTERS ---
+function setFilter(f){
+  filter=f; activeMembers=new Set();
+  document.querySelectorAll('.fbtn').forEach(b=>b.classList.toggle('active',b.dataset.f===f));
+  colorMap(); updateStats();
+}
+
+function toggleMember(m){
+  if(activeMembers.has(m)) activeMembers.delete(m);
+  else activeMembers.add(m);
+  if(activeMembers.size===0){ setFilter('all'); return; }
+  filter='members';
+  document.querySelectorAll('.fbtn').forEach(b=>{
+    if(b.dataset.f==='all') b.classList.remove('active');
+    else b.classList.toggle('active', activeMembers.has(b.dataset.f));
+  });
+  colorMap(); updateStats();
+}
+
+// --- MODAL ---
+function openModal(code){
+  curCode=code;
+  const info=CD[code];
+  document.getElementById('mfl').src=flag(info.a2);
+  document.getElementById('mcn').textContent=info.name;
+  document.getElementById('mcm').textContent=info.c;
+  renderVisits(); hideForm();
+  document.getElementById('ov').classList.remove('hidden');
+}
+
+function closeModal(){ document.getElementById('ov').classList.add('hidden'); curCode=null; }
+function closeOv(e){ if(e.target===document.getElementById('ov')) closeModal(); }
+
+function renderVisits(){
+  const visits=data[curCode]?.visits||[];
+  const vl=document.getElementById('vl');
+  document.getElementById('avbtn').style.display=isUnlocked?'block':'none';
+  if(!visits.length){
+    vl.innerHTML='<div style="color:var(--mu);font-size:.76rem;text-align:center;padding:10px 0">Žiadne návštevy</div>';
+    return;
+  }
+  vl.innerHTML=visits.map((v,i)=>{
+    const isViac=v.count==='viac'||v.multiple;
+    const cntTxt=isViac?'viackrát 🔁':(v.count&&v.count!=='1'?v.count+'×':'');
+    let yearTxt='';
+    if(isViac&&v.lastYear) yearTxt=`posledná: ${v.lastYear}`;
+    else if(v.year) yearTxt=v.year;
+    const sub=[cntTxt,yearTxt].filter(Boolean).join(' · ');
+    const delBtn=isUnlocked?`<button class="delbtn" onclick="delVisit(${i})">✕</button>`:'';
+    return `<div class="vc">
+      <div class="vms">${(v.members||[]).map(m=>`<div class="vmd" style="background:${MC[m]||'#666'}">${ML[m]||'?'}</div>`).join('')}</div>
+      <div class="vi"><div class="vtt">${TL[v.type]||'Návšteva'}</div>${sub?`<div class="vyt">${sub}</div>`:''}</div>
+      <div class="vbg ${BC[v.type]||'bo'}">${BL[v.type]||'Iné'}</div>
+      ${delBtn}
+    </div>`;
+  }).join('');
+}
+
+async function delVisit(i){
+  if(!data[curCode]) return;
+  data[curCode].visits.splice(i,1);
+  await saveDoc(curCode);
+  renderVisits();
+}
+
+// --- FORM ---
+function showForm(){
+  document.getElementById('af').style.display='block';
+  document.getElementById('avbtn').style.display='none';
+  ['cbz','cbv','cbt'].forEach(id=>document.getElementById(id).checked=false);
+  document.getElementById('vtype').value='dovolenka';
+  document.getElementById('vcnt').value='1';
+  document.getElementById('vy').value='';
+  document.getElementById('vly').value='';
+  document.getElementById('vy').style.display='';
+  document.getElementById('vly').style.display='none';
+  document.getElementById('ylbl').textContent='Rok (voliteľné)';
+}
+
+function hideForm(){
+  document.getElementById('af').style.display='none';
+  document.getElementById('avbtn').style.display=isUnlocked?'block':'none';
+}
+
+function onCntChange(){
+  const isViac=document.getElementById('vcnt').value==='viac';
+  document.getElementById('vy').style.display=isViac?'none':'';
+  document.getElementById('vly').style.display=isViac?'':'none';
+  document.getElementById('ylbl').textContent=isViac?'Posledný rok (voliteľné)':'Rok (voliteľné)';
+}
+
+async function saveVisit(){
+  const members=['zoli','veve','teo'].filter((_,i)=>document.getElementById(['cbz','cbv','cbt'][i]).checked);
+  if(!members.length){ alert('Vyber aspoň jedného!'); return; }
+  const type=document.getElementById('vtype').value;
+  const cnt=document.getElementById('vcnt').value;
+  const isViac=cnt==='viac';
+  const year=document.getElementById('vy').value;
+  const lastYear=document.getElementById('vly').value;
+  const visit={members,type,count:cnt};
+  if(isViac&&lastYear) visit.lastYear=lastYear;
+  if(!isViac&&year) visit.year=year;
+  if(!data[curCode]) data[curCode]={visits:[]};
+  if(!data[curCode].visits) data[curCode].visits=[];
+  data[curCode].visits.push(visit);
+  await saveDoc(curCode);
+  renderVisits(); hideForm();
+}
+
+// --- STATS ---
+function showStats(){
+  document.getElementById('spage').classList.remove('hidden');
+  renderStats();
+}
+
+function hideStats(){
+  document.getElementById('spage').classList.add('hidden');
+}
+
+function renderStats(){
+  const members=[{key:'zoli',name:'Zoli',color:'#7dd3fc'},{key:'veve',name:'Veve',color:'#ec4899'},{key:'teo',name:'Teo',color:'#60a5fa'}];
+  let html='';
+  members.forEach(m=>{
+    const cc={};
+    let total=0;
+    Object.keys(data).forEach(code=>{
+      const info=CD[code]; if(!info) return;
+      if(getMembers(code).includes(m.key)){ cc[info.c]=(cc[info.c]||0)+1; total++; }
+    });
+    html+=`<div class="mcard"><div class="mchdr"><div class="mcdot" style="background:${m.color}"></div><div class="mcnam">${m.name}</div><div class="mctot">${total} krajín · ${Math.round(total/195*100)}% sveta</div></div>`;
+    CONTS.forEach(c=>{
+      const cnt=cc[c]||0, tot=CCOUNTS[c], pct=Math.round(cnt/tot*100);
+      html+=`<div class="crow"><div class="ctop"><span class="cnam">${ICONS[c]} ${c}</span><span class="cpct">${pct}% · ${cnt}/${tot}</span></div><div class="cbar"><div class="cfill" style="width:${pct}%;background:${m.color}"></div></div></div>`;
+    });
+    html+='</div>';
+  });
+  const zT=Object.keys(data).filter(c=>getMembers(c).includes('zoli')).length;
+  const vT=Object.keys(data).filter(c=>getMembers(c).includes('veve')).length;
+  const tT=Object.keys(data).filter(c=>getMembers(c).includes('teo')).length;
+  const aT=Object.keys(data).filter(c=>{const m=getMembers(c);return m.includes('zoli')&&m.includes('veve')&&m.includes('teo');}).length;
+  html+=`<div class="wcard"><div class="wttl">🌍 Celkový prehľad</div><div class="wgrid">
+    <div class="witem"><div class="wval" style="color:#f8fafc">⭐${aT}</div><div class="wlbl">Všetci</div></div>
+    <div class="witem"><div class="wval" style="color:#7dd3fc">${zT}</div><div class="wlbl">Zoli</div></div>
+    <div class="witem"><div class="wval" style="color:#ec4899">${vT}</div><div class="wlbl">Veve</div></div>
+    <div class="witem"><div class="wval" style="color:#60a5fa">${tT}</div><div class="wlbl">Teo</div></div>
+    <div class="witem"><div class="wval" style="color:#fbbf24">${Math.round(zT/195*100)}%</div><div class="wlbl">Zoli sveta</div></div>
+    <div class="witem"><div class="wval" style="color:#fbbf24">${Math.round(vT/195*100)}%</div><div class="wlbl">Veve sveta</div></div>
+  </div></div>`;
+  document.getElementById('spbody').innerHTML=html;
+}
+
+// --- PASSWORD ---
+function showPwd(){
+  document.getElementById('pov').classList.remove('hidden');
+  document.getElementById('pinp').value='';
+  document.getElementById('perr').style.display='none';
+  setTimeout(()=>document.getElementById('pinp').focus(),100);
+}
+
+function hidePwd(){
+  document.getElementById('pov').classList.add('hidden');
+}
+
+function checkPwd(){
+  if(document.getElementById('pinp').value==='travel'){
+    isUnlocked=true;
+    document.getElementById('lockedBanner').classList.add('hidden');
+    document.getElementById('unlockedBanner').classList.remove('hidden');
+    document.getElementById('lockBtn').textContent='🔓';
+    hidePwd();
+  } else {
+    document.getElementById('perr').style.display='block';
+    document.getElementById('pinp').value='';
+  }
+}
+
+function lockApp(){
+  isUnlocked=false;
+  document.getElementById('lockedBanner').classList.remove('hidden');
+  document.getElementById('unlockedBanner').classList.add('hidden');
+  document.getElementById('lockBtn').textContent='🔒';
+}
+
+// --- ZOOM ---
+function zoomIn(){ d3.select('#ms').transition().call(svgZ.scaleBy,1.5); }
+function zoomOut(){ d3.select('#ms').transition().call(svgZ.scaleBy,0.67); }
+function zoomReset(){ d3.select('#ms').transition().call(svgZ.transform,d3.zoomIdentity); }
+
+// --- INIT ---
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js'));
+}
+window.addEventListener('load',()=>{ initMap(); loadData(); });
+window.addEventListener('resize',()=>{ d3.select('#ms').selectAll('*').remove(); initMap(); });
+</script>
+</body>
+</html>
