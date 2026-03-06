@@ -626,7 +626,9 @@ function zoomIn(){d3.select('#ms').transition().call(svgZ.scaleBy,1.5)}
 function zoomOut(){d3.select('#ms').transition().call(svgZ.scaleBy,0.67)}
 function zoomReset(){d3.select('#ms').transition().call(svgZ.transform,d3.zoomIdentity)}
 
-window.addEventListener('load',()=>{initMap();loadData()});
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('/sw.js');
+}window.addEventListener('load',()=>{initMap();loadData()});
 window.addEventListener('resize',()=>{d3.select('#ms').selectAll('*').remove();initMap()});
 </script>
 </body>
