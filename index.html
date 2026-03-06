@@ -113,6 +113,25 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:9
 .ptr{height:5px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden}
 .ptf{height:100%;border-radius:3px;transition:width .6s ease}
 
+/* PASSWORD */
+.pwd-banner{background:rgba(59,130,246,.08);border-bottom:1px solid rgba(59,130,246,.15);padding:6px 14px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;font-size:.72rem;color:#60a5fa}
+.pwd-banner.hidden{display:none}
+.pwd-lock{display:flex;align-items:center;gap:6px}
+.pwd-btn{padding:4px 10px;border-radius:7px;border:1px solid rgba(59,130,246,.3);background:rgba(59,130,246,.1);color:#60a5fa;font-size:.7rem;font-weight:600;cursor:pointer;font-family:inherit}
+.pwd-btn:hover{background:rgba(59,130,246,.2)}
+.pwd-ov{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:500;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.pwd-ov.hidden{display:none}
+.pwd-box{background:var(--surface);border-radius:16px;padding:24px;width:280px;border:1px solid var(--border);box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.pwd-title{font-size:1rem;font-weight:700;margin-bottom:6px}
+.pwd-sub{font-size:.75rem;color:var(--muted);margin-bottom:16px}
+.pwd-inp{width:100%;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:9px;color:var(--text);font-size:.9rem;font-family:inherit;outline:none;margin-bottom:10px}
+.pwd-inp:focus{border-color:rgba(59,130,246,.5)}
+.pwd-err{font-size:.72rem;color:#f87171;margin-bottom:8px;display:none}
+.pwd-row{display:flex;gap:8px}
+.pwd-ok{flex:1;padding:8px;border-radius:9px;border:none;background:#3b82f6;color:#fff;font-size:.82rem;font-weight:600;cursor:pointer;font-family:inherit}
+.pwd-ok:hover{background:#2563eb}
+.pwd-cancel{padding:8px 12px;border-radius:9px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:.82rem;cursor:pointer;font-family:inherit}
+
 /* STATS PAGE */
 .stats-page{position:fixed;inset:0;background:var(--bg);z-index:300;display:flex;flex-direction:column;overflow:hidden}
 .stats-page.hidden{display:none}
@@ -160,6 +179,29 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:9
     <button class="fbtn" onclick="showStats()" style="background:#0f4c81;color:#fff;opacity:1">📊</button>
   </div>
 </header>
+
+<div class="pwd-banner" id="pwdBanner">
+  <div class="pwd-lock">🔒 Režim náhľadu – úpravy sú zamknuté</div>
+  <button class="pwd-btn" onclick="showPwdModal()">🔑 Odomknúť</button>
+</div>
+<div class="pwd-banner hidden" id="pwdUnlocked">
+  <div class="pwd-lock">🔓 Odomknuté – môžeš upravovať</div>
+  <button class="pwd-btn" onclick="lockApp()">Zamknúť</button>
+</div>
+
+<!-- PASSWORD MODAL -->
+<div class="pwd-ov hidden" id="pwdOv">
+  <div class="pwd-box">
+    <div class="pwd-title">🔑 Zadaj heslo</div>
+    <div class="pwd-sub">Pre úpravu návštev zadaj heslo</div>
+    <input type="password" class="pwd-inp" id="pwdInp" placeholder="Heslo..." onkeydown="if(event.key==='Enter')checkPwd()">
+    <div class="pwd-err" id="pwdErr">Nesprávne heslo!</div>
+    <div class="pwd-row">
+      <button class="pwd-ok" onclick="checkPwd()">Odomknúť</button>
+      <button class="pwd-cancel" onclick="hidePwdModal()">Zrušiť</button>
+    </div>
+  </div>
+</div>
 
 <div class="stats">
   <div class="sitem"><div class="sval" id="st">0</div><div class="slbl">Zobrazené</div></div>
@@ -278,7 +320,7 @@ const TL={dovolenka:'🏖️ Dovolenka',sluzobka:'💼 Služobka',prestup:'✈�
 const BC={dovolenka:'bh',sluzobka:'bw',prestup:'bt',ine:'bo'};
 const BL={dovolenka:'Dovolenka',sluzobka:'Služobka',prestup:'Prestup',ine:'Iné'};
 
-let data={},filter='all',activeMembers=new Set(),curCode=null,svgZ;
+let data={},filter='all',activeMembers=new Set(),curCode=null,svgZ,isUnlocked=false;
 
 function getMembers(code){
   const d=data[code];
@@ -457,6 +499,7 @@ function closeOv(e){if(e.target===document.getElementById('ov'))closeModal()}
 function renderVisits(){
   const visits=data[curCode]?.visits||[];
   const vl=document.getElementById('vl');
+  document.getElementById('avbtn').style.display=isUnlocked?'block':'none';
   if(!visits.length){
     vl.innerHTML='<div style="color:var(--muted);font-size:.78rem;text-align:center;padding:10px 0">Žiadne návštevy</div>';
     return;
@@ -475,7 +518,7 @@ function renderVisits(){
         ${sub?`<div class="vyt">${sub}</div>`:''}
       </div>
       <div class="vbg ${BC[v.type]||'bo'}">${BL[v.type]||'Iné'}</div>
-      <button class="delbtn" onclick="delVisit(${i})">✕</button>
+      ${isUnlocked?'<button class="delbtn" onclick="delVisit('+i+')">✕</button>":""}
     </div>`;
   }).join('');
 }
@@ -543,6 +586,36 @@ async function saveVisit(){
   data[curCode].visits.push(visit);
   await saveDoc(curCode);
   renderVisits();renderContinents();hideForm();
+}
+
+function showPwdModal(){
+  document.getElementById('pwdOv').classList.remove('hidden');
+  document.getElementById('pwdInp').value='';
+  document.getElementById('pwdErr').style.display='none';
+  setTimeout(()=>document.getElementById('pwdInp').focus(),100);
+}
+
+function hidePwdModal(){
+  document.getElementById('pwdOv').classList.add('hidden');
+}
+
+function checkPwd(){
+  const val=document.getElementById('pwdInp').value;
+  if(val==='travel'){
+    isUnlocked=true;
+    document.getElementById('pwdBanner').classList.add('hidden');
+    document.getElementById('pwdUnlocked').classList.remove('hidden');
+    hidePwdModal();
+  } else {
+    document.getElementById('pwdErr').style.display='block';
+    document.getElementById('pwdInp').value='';
+  }
+}
+
+function lockApp(){
+  isUnlocked=false;
+  document.getElementById('pwdBanner').classList.remove('hidden');
+  document.getElementById('pwdUnlocked').classList.add('hidden');
 }
 
 function showStats(){
